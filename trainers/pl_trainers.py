@@ -4,6 +4,7 @@ import os
 import pickle
 import random
 import time
+from PIL import Image
 
 import cv2
 import numpy as np
@@ -18,11 +19,46 @@ from dnnlib.util import get_obj_by_name
 from inpainting_metric import get_inpainting_metrics
 from networks.losses import *
 from networks.pcp import PerceptualLoss, ResNetPL
-from utils import get_lr_milestone_decay_with_warmup
-from utils import stitch_images
+# from utils import get_lr_milestone_decay_with_warmup
+# from utils import stitch_images
 from .nms_temp import get_nms as get_np_nms
 from .nms_torch import get_nms as get_torch_nms
 
+from torch.optim.lr_scheduler import LambdaLR
+
+def get_lr_milestone_decay_with_warmup(optimizer, num_warmup_steps, milestone_steps, gamma, last_epoch=-1):
+
+    def lr_lambda(current_step):
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        else:
+            lr_weight = 1.0
+            for ms in milestone_steps:
+                if ms < current_step:
+                    lr_weight *= gamma
+        return lr_weight
+
+    return LambdaLR(optimizer, lr_lambda, last_epoch)
+
+def stitch_images(inputs, *outputs, img_per_row=2):
+    gap = 5
+    columns = len(outputs) + 1
+
+    height, width = inputs[0][:, :, 0].shape
+    img = Image.new('RGB',
+                    (width * img_per_row * columns + gap * (img_per_row - 1), height * int(len(inputs) / img_per_row)))
+    images = [inputs, *outputs]
+
+    for ix in range(len(inputs)):
+        xoffset = int(ix % img_per_row) * width * columns + int(ix % img_per_row) * gap
+        yoffset = int(ix / img_per_row) * height
+
+        for cat in range(len(images)):
+            im = np.array((images[cat][ix]).cpu()).astype(np.uint8).squeeze()
+            im = Image.fromarray(im)
+            img.paste(im, (xoffset + cat * width, yoffset))
+
+    return im
 
 def add_prefix_to_keys(dct, prefix):
     return {prefix + k: v for k, v in dct.items()}

@@ -2,7 +2,13 @@ import logging
 import logging.config
 from pathlib import Path
 
-from utils import read_json
+import json
+from collections import OrderedDict
+
+def read_json(fname):
+    fname = Path(fname)
+    with fname.open('rt') as handle:
+        return json.load(handle, object_hook=OrderedDict)
 
 
 def setup_logging(save_dir, log_config='logger/logger_config.json', default_level=logging.INFO):
